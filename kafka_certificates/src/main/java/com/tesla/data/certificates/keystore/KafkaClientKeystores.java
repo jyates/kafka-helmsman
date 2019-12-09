@@ -58,6 +58,14 @@ public class KafkaClientKeystores {
   }
 
   /**
+   * Create the keystore from the configuration.
+   */
+  public KeyStore createKeystore(KeystoreConfig conf) throws IOException, CertificateException,
+      NoSuchAlgorithmException, KeyStoreException {
+    return this.createKeystore(conf.key(), conf.certificate(), conf.caChain());
+  }
+
+  /**
    * Create a keystore that serves the private key under the alias "client", where the key has the given certificate
    * and associated Certificate Authority (CA) chain.
    *
@@ -80,37 +88,45 @@ public class KafkaClientKeystores {
     PrivateKey pk = converter.getPrivateKey(o);
 
     // build the certificate chain for the key
-    List<X509Certificate> chain = readCertificateChain(certFactory, certificate);
-    chain.addAll(readCertificateChain(certFactory, caChain));
+    List<X509Certificate> chain = readCertificateChain(certificate);
+    chain.addAll(readCertificateChain(caChain));
 
     ks.setKeyEntry(CLIENT_KEY_NAME, pk, password, chain.toArray(EMPTY_CERTS));
     return ks;
   }
 
   /**
+   * Create a truststore from the {@link KeystoreConfig}. If the {@link KeystoreConfig#issuingCa} is not present, uses
+   * the first certificate (the end of the chain, i.e. the CA with the lowest authority) as the Issuing CA. Any
+   * certificate that is signed by this certificate will be trusted.
+   * @return a Keystore that trusts (i.e. a truststore) any certificate signed by the configured certificate authority
+  */
+  public KeyStore createTruststore(KeystoreConfig conf) throws IOException, CertificateException, KeyStoreException,
+      NoSuchAlgorithmException {
+    InputStream is = conf.issuingCa().orElse(conf.caChain());
+    return createTruststore(readCertificateChain(is).get(0));
+  }
+
+  /**
    * Create keystore for the certificates that the client client should trust. Any certificates that are signed by
-   * the issuing CA whose certificate is added below are considered trusted entities and will be authenticated
+   * the issuing CA (whose certificate is added here) are considered trusted entities and will be authenticated
    * correctly.
    *
    * @param issuingCa certificate for the issuing CA
    */
-  public KeyStore createTruststore(InputStream issuingCa) throws KeyStoreException, CertificateException, IOException,
-      NoSuchAlgorithmException {
+  public KeyStore createTruststore(X509Certificate issuingCa) throws KeyStoreException, CertificateException,
+      IOException, NoSuchAlgorithmException {
     KeyStore truststore = KeyStore.getInstance(JAVA_KEYSTORE);
     truststore.load(null, password);
 
-    // we just need to trust the issuing CA for all connections
-    X509Certificate certificate =
-        (X509Certificate) certFactory.generateCertificate(issuingCa);
-    truststore.setCertificateEntry(CA_ROOT_CERT_NAME, certificate);
+    truststore.setCertificateEntry(CA_ROOT_CERT_NAME, issuingCa);
     return truststore;
   }
 
-  private static List<X509Certificate> readCertificateChain(CertificateFactory factory, InputStream is)
-      throws IOException, CertificateException {
+  static List<X509Certificate> readCertificateChain(InputStream is) throws IOException, CertificateException {
     List<X509Certificate> certs = new ArrayList<>();
     while (is.available() > 0) {
-      Object o = factory.generateCertificate(is);
+      Object o = certFactory.generateCertificate(is);
       certs.add((X509Certificate) o);
     }
     return certs;
@@ -161,11 +177,11 @@ public class KafkaClientKeystores {
     KafkaClientKeystores keystores = new KafkaClientKeystores(password);
 
     Optional<String> directory = Optional.ofNullable(conf.directory);
-    KeyStore ks = keystores.createKeystore(conf.key(), conf.certificate(), conf.caChain());
+    KeyStore ks = keystores.createKeystore(conf);
     byte[] keystore = keystores.writeStore(directory, "keystore", ks);
     conf.setKeystore(keystore);
 
-    KeyStore truststore = keystores.createTruststore(conf.issuingCa());
+    KeyStore truststore = keystores.createTruststore(conf);
     keystore = keystores.writeStore(directory, "truststore", truststore);
     conf.setTruststore(keystore);
 

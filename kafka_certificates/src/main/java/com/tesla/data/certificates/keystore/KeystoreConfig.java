@@ -1,5 +1,8 @@
 package com.tesla.data.certificates.keystore;
 
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
+
 import com.beust.jcommander.Parameter;
 
 import java.io.File;
@@ -9,17 +12,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.Base64;
+import java.util.Optional;
 
 public class KeystoreConfig {
-  private static final int COPY_BUF_SIZE = 8024;
-
   @Parameter(names = "--certificate", description = "Path to the client's signed certificate", required = true)
   String certificate;
 
   @Parameter(names = "--key", description = "Path to the client's private key", required = true)
   String key;
 
-  @Parameter(names = "--issuing_ca", description = "Path to the  certificate for the issuing CA", required = true)
+  @Parameter(names = "--issuing_ca", description = "Path to the certificate for the issuing CA. If not specified, uses " +
+      "the first certificate in the CA Chain")
   String issuingCa;
 
   @Parameter(names = "--ca_chain", description = "Path to the  certificate chain", required = true)
@@ -46,8 +49,8 @@ public class KeystoreConfig {
     return new FileInputStream(certificate);
   }
 
-  public InputStream issuingCa() throws FileNotFoundException {
-    return new FileInputStream(issuingCa);
+  public Optional<InputStream> issuingCa() throws FileNotFoundException {
+    return issuingCa == null? empty(): of(new FileInputStream(issuingCa));
   }
 
   public InputStream caChain() throws FileNotFoundException {

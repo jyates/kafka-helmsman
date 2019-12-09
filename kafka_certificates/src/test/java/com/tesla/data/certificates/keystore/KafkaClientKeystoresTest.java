@@ -1,5 +1,6 @@
 package com.tesla.data.certificates.keystore;
 
+import static com.tesla.data.certificates.keystore.KafkaClientKeystores.readCertificateChain;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
@@ -35,7 +36,7 @@ public class KafkaClientKeystoresTest {
   public void testTruststore() throws Exception {
     KafkaClientKeystores keystores = new KafkaClientKeystores(PASSWORD);
     InputStream ca = Resources.getResource("keystore/issuing_ca").openStream();
-    KeyStore store = keystores.createTruststore(ca);
+    KeyStore store = keystores.createTruststore(readCertificateChain(ca).get(0));
     assertNotNull(store.getCertificate("caroot"));
   }
 }
