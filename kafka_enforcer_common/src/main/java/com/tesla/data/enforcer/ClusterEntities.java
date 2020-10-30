@@ -14,6 +14,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * A utility class to parse consolidated (multi-cluster) configurations. The structure of a consolidated config is,
@@ -59,16 +60,23 @@ public class ClusterEntities {
   /**
    * Get Entities configurations for a given cluster.
    *
-   * @param allEntities a list containing all consolidated (all clusters) configurations
-   * @param cluster     the name of the cluster to filter Entities on
+   * @param allEntities     a list containing all consolidated (all clusters) configurations
+   * @param cluster         the name of the cluster to filter Entities on
+   * @param clusterDefaults default configuration values for the entity in the cluster
    * @return a list of entity configurations for the given cluster
    * @throws IllegalArgumentException if invalid config structure is passed
    */
   public static List<Map<String, Object>> forCluster(
-      List<Map<String, Object>> allEntities, String cluster) {
+      List<Map<String, Object>> allEntities, String cluster, Map<String, Object> clusterDefaults) {
     Map<String, List<Map<String, Object>>> map = new HashMap<>();
-    allEntities.forEach(
-        tc -> {
+    return allEntities.stream()
+        .peek(tc -> checkArgument(tc.containsKey(CLUSTERS), "%s does not contain cluster overrides", tc))
+        // only include entities that have this cluster key
+        .filter(tc ->{
+          Map<String, Map<String, Object>> clusters =
+              (Map<String, Map<String, Object>>) tc.get(CLUSTERS);
+          return clusters.containsKey(cluster);
+        }).map( tc ->{
           /*
           expected structure for an entry 'tc' is:
           {
@@ -81,21 +89,17 @@ public class ClusterEntities {
                 replicationFactor: 2
           }
           */
-          checkArgument(tc.containsKey(CLUSTERS), "%s does not contain cluster overrides", tc);
-          Map<String, Map<String, Object>> clusters =
-              (Map<String, Map<String, Object>>) tc.get(CLUSTERS);
-
           // base configuration is everything except the overrides under 'clusters' key
           Map<String, Object> baseConfig = new HashMap<>(tc);
           baseConfig.remove(CLUSTERS);
 
-          clusters.forEach(
-              (c, o) ->
-                  map.computeIfAbsent(c, k -> new LinkedList<>())
-                      .add(applyOverrides(baseConfig, o)));
-        });
-
-    return map.getOrDefault(cluster, Collections.emptyList());
+          Map<String, Map<String, Object>> clusters =
+              (Map<String, Map<String, Object>>) tc.get(CLUSTERS);
+          Map<String, Object> clusterOverrides = new HashMap<>(clusterDefaults);
+          // add the config for the given cluster
+          clusterOverrides.putAll(clusters.get(cluster));
+          return applyOverrides(baseConfig, clusterOverrides);
+        }).collect(Collectors.toList());
   }
 
   // override all properties

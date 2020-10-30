@@ -80,7 +80,7 @@ public class ClusterEntitiesTest {
           });
 
   static List<Map<String, Object>> topics(String conf, String cluster) throws IOException {
-    return ClusterEntities.forCluster(mapper.readValue(conf, type), cluster);
+    return ClusterEntities.forCluster(mapper.readValue(conf, type), cluster, Collections.emptyMap());
   }
 
   @Test

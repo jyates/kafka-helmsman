@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -82,13 +83,15 @@ public class BaseCommand<T> {
         entitiesKey, cmdConfig.containsKey(entitiesKey), entitiesFileKey, cmdConfig.containsKey(entitiesFileKey));
     Object entities = cmdConfig.containsKey(entitiesKey) ? cmdConfig.get(entitiesKey) : cmdConfig.get(entitiesFileKey);
     Objects.requireNonNull(entities, "Missing entities in config");
+    Map<String, Object> clusterDefaults = configuredEntities(cmdConfig, "clusters", "clustersFile", MAP_TYPE);
     List<Map<String, Object>> unParsed = configuredEntities(cmdConfig, entitiesKey, entitiesFileKey);
     final List<Map<String, Object>> forCluster;
     if (cluster == null) {
       forCluster = unParsed;
       LOG.info("Cluster is not set");
     } else {
-      forCluster = ClusterEntities.forCluster(unParsed, cluster);
+      forCluster = ClusterEntities.forCluster(unParsed, cluster, (Map<String, Object>)
+          clusterDefaults.getOrDefault(cluster, Collections.emptyMap()));
       LOG.info("Out of total {}, found {} matching entities for cluster {}", unParsed.size(), forCluster.size(), cluster);
     }
     return forCluster.stream()
@@ -96,13 +99,19 @@ public class BaseCommand<T> {
         .collect(Collectors.toList());
   }
 
+
   // un-parsed list of configured entities
   private List<Map<String, Object>> configuredEntities(Map<String, Object> cmdConfig, String entitiesKey, String entitiesFileKey) {
     TypeReference<List<Map<String, Object>>> listOfMaps =
         new TypeReference<List<Map<String, Object>>>() {
         };
+    return configuredEntities(cmdConfig, entitiesKey, entitiesFileKey, listOfMaps);
+  }
+
+  private <ENTITY> ENTITY configuredEntities(Map<String, Object> cmdConfig, String entitiesKey,
+                                             String entitiesFileKey, TypeReference<ENTITY> entity) {
     if (cmdConfig.containsKey(entitiesKey)) {
-      return MAPPER.convertValue(cmdConfig.get(entitiesKey), listOfMaps);
+      return MAPPER.convertValue(cmdConfig.get(entitiesKey), entity);
     } else {
       try {
         String entitiesFile = (String) cmdConfig.get(entitiesFileKey);
@@ -112,7 +121,7 @@ public class BaseCommand<T> {
         } else {
           is = Resources.getResource(entitiesFile).openStream();
         }
-        return MAPPER.readValue(is, listOfMaps);
+        return MAPPER.readValue(is, entity);
       } catch (IOException e) {
         throw new ParameterException(
             "Could not load entities from file " + cmdConfig.get(entitiesFileKey), e);
